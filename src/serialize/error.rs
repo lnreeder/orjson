@@ -10,12 +10,14 @@ pub(crate) enum SerializeError {
     DefaultRecursionLimit,
     Integer53Bits,
     Integer64Bits,
+    Integer128Bits,
     InvalidStr,
     InvalidFragment,
     KeyMustBeStr,
     RecursionLimit,
     TimeHasTzinfo,
     DictIntegerKey64Bit,
+    DictIntegerKey128Bit,
     DictKeyInvalidType,
     NumpyMalformed,
     NumpyNotCContiguous,
@@ -39,6 +41,7 @@ impl core::fmt::Display for SerializeError {
             }
             SerializeError::Integer53Bits => write!(f, "Integer exceeds 53-bit range"),
             SerializeError::Integer64Bits => write!(f, "Integer exceeds 64-bit range"),
+            SerializeError::Integer128Bits => write!(f, "Integer exceeds 128-bit range"),
             SerializeError::InvalidStr => write!(f, "{}", crate::util::INVALID_STR),
             SerializeError::InvalidFragment => {
                 write!(f, "orjson.Fragment's content is not of type bytes or str")
@@ -48,6 +51,9 @@ impl core::fmt::Display for SerializeError {
             SerializeError::TimeHasTzinfo => write!(f, "datetime.time must not have tzinfo set"),
             SerializeError::DictIntegerKey64Bit => {
                 write!(f, "Dict integer key must be within 64-bit range")
+            }
+            SerializeError::DictIntegerKey128Bit => {
+                write!(f, "Dict integer key must be within 128-bit range")
             }
             SerializeError::DictKeyInvalidType => {
                 write!(f, "Dict key must a type serializable with OPT_NON_STR_KEYS")

@@ -4393,7 +4393,20 @@ static_inline bool read_number(u8 **ptr,
     if (false) return_f64_bin(F64_RAW_INF); \
     else return_err(hdr, "number is infinity when parsed as double"); \
 } while (false)
-    
+
+/* Return a big integer (one that overflows u64/i64 but is a pure integer
+   with no decimal point or exponent) as a YYJSON_TYPE_RAW value pointing at
+   the original number text in the input buffer. The caller (Rust) parses
+   the raw string into i128/u128. The tag's upper bits store the length
+   (cur - hdr) so the consumer knows how many bytes to read. This avoids
+   the precision loss that would occur if the number were converted to f64. */
+#define return_raw_bignum() do { \
+    val->tag = ((u64)(cur - hdr) << YYJSON_TAG_BIT) | YYJSON_TYPE_RAW; \
+    val->uni.str = (const char *)hdr; \
+    *end = cur; return true; \
+} while (false)
+
+
     u8 *sig_cut = NULL; /* significant part cutting position for long number */
     u8 *sig_end = NULL; /* significant part ending position */
     u8 *dot_pos = NULL; /* decimal point position */
@@ -4471,7 +4484,7 @@ static_inline bool read_number(u8 **ptr,
     if (!digi_is_digit_or_fp(*cur)) {
         /* this number is an integer consisting of 19 digits */
         if (sign && (sig > ((u64)1 << 63))) { /* overflow */
-            return_f64(normalized_u64_to_f64(sig));
+            return_raw_bignum();
         }
         return_i64(sig);
     }
@@ -4522,9 +4535,9 @@ digi_intg_more:
                 (sig == (U64_MAX / 10) && num <= (U64_MAX % 10))) {
                 sig = num + sig * 10;
                 cur++;
-                /* convert to double if overflow */
+                /* signed 20-digit overflow: return as raw bignum */
                 if (sign) {
-                    return_f64(normalized_u64_to_f64(sig));
+                    return_raw_bignum();
                 }
                 return_i64(sig);
             }
@@ -4542,8 +4555,15 @@ digi_intg_more:
             return_err(cur, "no digit after decimal point");
         }
     }
-    
-    
+
+    /* big integer: excess digits with no decimal point or exponent */
+    if (!dot_pos && !digi_is_exp(*cur)) {
+        while (digi_is_digit(*cur)) cur++;
+        if (!digi_is_fp(*cur)) {
+            return_raw_bignum();
+        }
+    }
+
     /* read more digits in fraction part */
 digi_frac_more:
     sig_cut = cur; /* too large to fit in u64, excess digits need to be cut */
@@ -4930,6 +4950,7 @@ digi_finish:
 #undef return_f64
 #undef return_f64_bin
 #undef return_raw
+#undef return_raw_bignum
 }
 
 
@@ -4979,7 +5000,19 @@ static_inline bool read_number(u8 **ptr,
     if (false) return_f64_bin(F64_RAW_INF); \
     else return_err(hdr, "number is infinity when parsed as double"); \
 } while (false)
-    
+
+/* Return a big integer (one that overflows u64/i64 but is a pure integer
+   with no decimal point or exponent) as a YYJSON_TYPE_RAW value pointing at
+   the original number text in the input buffer. The caller (Rust) parses
+   the raw string into i128/u128. The tag's upper bits store the length
+   (cur - hdr) so the consumer knows how many bytes to read. This avoids
+   the precision loss that would occur if the number were converted to f64. */
+#define return_raw_bignum() do { \
+    val->tag = ((u64)(cur - hdr) << YYJSON_TAG_BIT) | YYJSON_TYPE_RAW; \
+    val->uni.str = (const char *)hdr; \
+    *end = cur; return true; \
+} while (false)
+
     u64 sig, num;
     u8 *hdr = *ptr;
     u8 *cur = *ptr;
@@ -4987,7 +5020,7 @@ static_inline bool read_number(u8 **ptr,
     u8 *dot = NULL;
     u8 *f64_end = NULL;
     bool sign;
-    
+
     /* read number as raw string if has `YYJSON_READ_NUMBER_AS_RAW` flag */
     if (unlikely(false)) {
         return read_number_raw(ptr, pre, flg, val, msg);
@@ -5027,27 +5060,29 @@ static_inline bool read_number(u8 **ptr,
             sig = num + sig * 10;
             cur++;
             if (sign) {
-                if (false) return_raw();
-                return_f64(normalized_u64_to_f64(sig));
+                return_raw_bignum();
             }
             return_i64(sig);
         }
     }
-    
+
 intg_end:
     /* continuous digits ended */
     if (!digi_is_digit_or_fp(*cur)) {
         /* this number is an integer consisting of 1 to 19 digits */
         if (sign && (sig > ((u64)1 << 63))) {
-            if (false) return_raw();
-            return_f64(normalized_u64_to_f64(sig));
+            return_raw_bignum();
         }
         return_i64(sig);
     }
-    
+
 read_double:
     /* this number should be read as double */
     while (digi_is_digit(*cur)) cur++;
+    /* if no decimal point or exponent, this is a big integer */
+    if (!digi_is_fp(*cur)) {
+        return_raw_bignum();
+    }
     if (*cur == '.') {
         /* skip fraction part */
         dot = cur;
@@ -5108,6 +5143,7 @@ read_double:
 #undef return_f64_bin
 #undef return_inf
 #undef return_raw
+#undef return_raw_bignum
 }
 
 #endif /* FP_READER */

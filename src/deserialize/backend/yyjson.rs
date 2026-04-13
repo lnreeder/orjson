@@ -27,6 +27,7 @@ const TAG_NULL: u8 = 0b00000010;
 const TAG_OBJECT: u8 = 0b00000111;
 const TAG_STRING: u8 = 0b00000101;
 const TAG_TRUE: u8 = 0b00001011;
+const TAG_RAW: u8 = 0b00000001;
 const TAG_UINT64: u8 = 0b00000100;
 
 macro_rules! is_yyjson_tag {
@@ -123,6 +124,7 @@ pub(crate) fn deserialize(
                 ElementType::Uint64 => parse_yy_u64(val),
                 ElementType::Int64 => parse_yy_i64(val),
                 ElementType::Double => parse_yy_f64(val),
+                ElementType::Raw => parse_yy_raw_int(val),
                 ElementType::Null => PyNoneRef::none().as_non_null_ptr(),
                 ElementType::True => PyBoolRef::pytrue().as_non_null_ptr(),
                 ElementType::False => PyBoolRef::pyfalse().as_non_null_ptr(),
@@ -158,6 +160,7 @@ enum ElementType {
     False,
     Array,
     Object,
+    Raw,
 }
 
 impl ElementType {
@@ -172,6 +175,7 @@ impl ElementType {
             TAG_FALSE => Self::False,
             TAG_ARRAY => Self::Array,
             TAG_OBJECT => Self::Object,
+            TAG_RAW => Self::Raw,
             _ => unreachable_unchecked!(),
         }
     }
@@ -199,6 +203,26 @@ fn parse_yy_i64(elem: *mut yyjson_val) -> NonNull<crate::ffi::PyObject> {
 #[inline(always)]
 fn parse_yy_f64(elem: *mut yyjson_val) -> NonNull<crate::ffi::PyObject> {
     PyFloatRef::from_f64(unsafe { (*elem).uni.f64_ }).as_non_null_ptr()
+}
+
+#[inline(never)]
+fn parse_yy_raw_int(elem: *mut yyjson_val) -> NonNull<crate::ffi::PyObject> {
+    let raw_str = str_from_slice!(
+        (*elem).uni.str_.cast::<u8>(),
+        unsafe_yyjson_get_len(elem)
+    );
+    if raw_str.starts_with('-') {
+        if let Ok(val) = raw_str.parse::<i128>() {
+            return PyIntRef::from_i128(val).as_non_null_ptr();
+        }
+    } else {
+        if let Ok(val) = raw_str.parse::<u128>() {
+            return PyIntRef::from_u128(val).as_non_null_ptr();
+        }
+    }
+    // exceeds 128-bit: fall back to float
+    let f_val: f64 = raw_str.parse().unwrap_or(f64::NAN);
+    PyFloatRef::from_f64(f_val).as_non_null_ptr()
 }
 
 #[inline(never)]
@@ -233,6 +257,7 @@ fn populate_yy_array(mut list: PyListRef, elem: *mut yyjson_val) {
                     ElementType::Uint64 => parse_yy_u64(val),
                     ElementType::Int64 => parse_yy_i64(val),
                     ElementType::Double => parse_yy_f64(val),
+                    ElementType::Raw => parse_yy_raw_int(val),
                     ElementType::Null => PyNoneRef::none().as_non_null_ptr(),
                     ElementType::True => PyBoolRef::pytrue().as_non_null_ptr(),
                     ElementType::False => PyBoolRef::pyfalse().as_non_null_ptr(),
@@ -285,6 +310,7 @@ fn populate_yy_object(mut dict: PyDictRef, elem: *mut yyjson_val) {
                     ElementType::Uint64 => parse_yy_u64(val),
                     ElementType::Int64 => parse_yy_i64(val),
                     ElementType::Double => parse_yy_f64(val),
+                    ElementType::Raw => parse_yy_raw_int(val),
                     ElementType::Null => PyNoneRef::none().as_non_null_ptr(),
                     ElementType::True => PyBoolRef::pytrue().as_non_null_ptr(),
                     ElementType::False => PyBoolRef::pyfalse().as_non_null_ptr(),

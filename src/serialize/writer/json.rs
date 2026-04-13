@@ -89,8 +89,11 @@ where
             .map_err(Error::io)
     }
 
-    fn serialize_i128(self, _value: i128) -> Result<()> {
-        unreachable!();
+    #[inline]
+    fn serialize_i128(self, value: i128) -> Result<()> {
+        self.formatter
+            .write_i128(&mut self.writer, value)
+            .map_err(Error::io)
     }
 
     fn serialize_u8(self, _value: u8) -> Result<()> {
@@ -115,8 +118,11 @@ where
             .map_err(Error::io)
     }
 
-    fn serialize_u128(self, _value: u128) -> Result<()> {
-        unreachable!();
+    #[inline]
+    fn serialize_u128(self, value: u128) -> Result<()> {
+        self.formatter
+            .write_u128(&mut self.writer, value)
+            .map_err(Error::io)
     }
 
     #[inline]

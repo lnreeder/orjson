@@ -119,6 +119,30 @@ pub(crate) unsafe fn PyLong_AsByteArray(
     unsafe { _PyLong_AsByteArray(v, bytes, n, little_endian, is_signed, 0) }
 }
 
+#[cfg(not(Py_3_13))]
+#[inline(always)]
+#[allow(non_snake_case)]
+pub(crate) unsafe fn PyLong_FromByteArray(
+    bytes: *const core::ffi::c_uchar,
+    n: usize,
+    little_endian: core::ffi::c_int,
+    is_signed: core::ffi::c_int,
+) -> *mut pyo3_ffi::PyObject {
+    unsafe { _PyLong_FromByteArray(bytes, n, little_endian, is_signed) }
+}
+
+#[cfg(Py_3_13)]
+#[inline(always)]
+#[allow(non_snake_case)]
+pub(crate) unsafe fn PyLong_FromByteArray(
+    bytes: *const core::ffi::c_uchar,
+    n: usize,
+    little_endian: core::ffi::c_int,
+    is_signed: core::ffi::c_int,
+) -> *mut pyo3_ffi::PyObject {
+    unsafe { _PyLong_FromByteArray(bytes, n, little_endian, is_signed) }
+}
+
 #[cfg(CPython)]
 #[inline(always)]
 #[allow(non_snake_case)]
@@ -320,4 +344,12 @@ unsafe extern "C" {
         little_endian: core::ffi::c_int,
         is_signed: core::ffi::c_int,
     ) -> core::ffi::c_int;
+
+    #[cfg_attr(PyPy, link_name = "_PyPyLong_FromByteArray")]
+    pub(crate) fn _PyLong_FromByteArray(
+        bytes: *const core::ffi::c_uchar,
+        n: usize,
+        little_endian: core::ffi::c_int,
+        is_signed: core::ffi::c_int,
+    ) -> *mut pyo3_ffi::PyObject;
 }

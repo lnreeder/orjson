@@ -18,7 +18,9 @@ use crate::serialize::per_type::{
 use crate::serialize::serializer::PyObjectSerializer;
 use crate::serialize::state::SerializerState;
 use crate::serialize::uuid::write_uuid;
-use crate::serialize::writer::{SmallFixedBuffer, write_integer_i64, write_integer_u64};
+use crate::serialize::writer::{
+    SmallFixedBuffer, write_integer_i128, write_integer_i64, write_integer_u128, write_integer_u64,
+};
 use crate::typeref::{STR_TYPE, TRUE, VALUE_STR};
 use core::ptr::NonNull;
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -437,7 +439,10 @@ fn non_str_float(key: *mut crate::ffi::PyObject) -> Result<String, SerializeErro
 
 #[allow(clippy::unnecessary_wraps)]
 #[inline(never)]
-fn non_str_int(key: *mut crate::ffi::PyObject) -> Result<String, SerializeError> {
+fn non_str_int(
+    key: *mut crate::ffi::PyObject,
+    opts: crate::opt::Opt,
+) -> Result<String, SerializeError> {
     let ival = ffi!(PyLong_AsLongLong(key));
     if ival == -1 && !ffi!(PyErr_Occurred()).is_null() {
         cold_path!();
@@ -445,7 +450,26 @@ fn non_str_int(key: *mut crate::ffi::PyObject) -> Result<String, SerializeError>
         let uval = ffi!(PyLong_AsUnsignedLongLong(key));
         if uval == u64::MAX && !ffi!(PyErr_Occurred()).is_null() {
             cold_path!();
-            return Err(SerializeError::DictIntegerKey64Bit);
+            ffi!(PyErr_Clear());
+            if !opt_enabled!(opts, crate::opt::ALLOW_BIGINT) {
+                return Err(SerializeError::DictIntegerKey64Bit);
+            }
+            let pyint = unsafe { PyIntRef::from_ptr_unchecked(key) };
+            return match unsafe { pyint.as_i128() } {
+                Ok(val) => {
+                    let mut buf = SmallFixedBuffer::new();
+                    write_integer_i128(&mut buf, val);
+                    Ok(buf.to_string())
+                }
+                Err(_) => match unsafe { pyint.as_u128() } {
+                    Ok(val) => {
+                        let mut buf = SmallFixedBuffer::new();
+                        write_integer_u128(&mut buf, val);
+                        Ok(buf.to_string())
+                    }
+                    Err(_) => Err(SerializeError::DictIntegerKey128Bit),
+                },
+            };
         }
         let mut buf = SmallFixedBuffer::new();
         write_integer_u64(&mut buf, uval);
@@ -483,7 +507,7 @@ impl DictNonStrKey {
                         Ok(String::from("false"))
                     }
                 }
-                ObType::Int => non_str_int(key),
+                ObType::Int => non_str_int(key, opts),
                 ObType::Float => non_str_float(key),
                 ObType::Datetime => non_str_datetime(PyDateTimeRef::from_ptr_unchecked(key), opts),
                 ObType::Date => non_str_date(PyDateRef::from_ptr_unchecked(key)),

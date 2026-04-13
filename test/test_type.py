@@ -455,10 +455,86 @@ class TestType:
 
     def test_int_128(self):
         """
-        int 128-bit
+        int 128-bit without OPT_ALLOW_BIGINT raises error
         """
         for val in (18446744073709551616, -9223372036854775809):
             pytest.raises(orjson.JSONEncodeError, orjson.dumps, val)
+
+    def test_int_128_allow_bigint(self):
+        """
+        int 128-bit with OPT_ALLOW_BIGINT
+        """
+        for val in (
+            18446744073709551616,  # u64::MAX + 1
+            -9223372036854775809,  # i64::MIN - 1
+            2**100,
+            -(2**100),
+            2**127 - 1,  # i128::MAX
+            -(2**127),  # i128::MIN
+            2**128 - 1,  # u128::MAX
+        ):
+            result = orjson.dumps(val, option=orjson.OPT_ALLOW_BIGINT)
+            assert result == str(val).encode("utf-8")
+
+    def test_int_128_roundtrip(self):
+        """
+        int 128-bit round-trip
+        """
+        for val in (
+            18446744073709551616,
+            -9223372036854775809,
+            2**100,
+            -(2**100),
+            2**127 - 1,
+            -(2**127),
+            2**128 - 1,
+        ):
+            assert orjson.loads(orjson.dumps(val, option=orjson.OPT_ALLOW_BIGINT)) == val
+
+    def test_int_128_loads(self):
+        """
+        int 128-bit deserialization
+        """
+        assert orjson.loads(b"170141183460469231731687303715884105727") == 2**127 - 1
+        assert orjson.loads(b"-170141183460469231731687303715884105728") == -(2**127)
+        assert (
+            orjson.loads(b"340282366920938463463374607431768211455") == 2**128 - 1
+        )
+        assert orjson.loads(b"18446744073709551616") == 2**64
+
+    def test_int_128_loads_in_containers(self):
+        """
+        int 128-bit deserialization in arrays and objects
+        """
+        assert orjson.loads(b"[18446744073709551616]") == [2**64]
+        assert orjson.loads(b'{"v": 18446744073709551616}') == {"v": 2**64}
+
+    def test_int_128_strict(self):
+        """
+        int 128-bit with STRICT_INTEGER rejects
+        """
+        with pytest.raises(orjson.JSONEncodeError):
+            orjson.dumps(
+                2**100,
+                option=orjson.OPT_STRICT_INTEGER | orjson.OPT_ALLOW_BIGINT,
+            )
+
+    def test_int_128_exceeds(self):
+        """
+        int exceeding 128-bit raises error even with OPT_ALLOW_BIGINT
+        """
+        for val in (2**128, -(2**127) - 1, 2**200):
+            with pytest.raises(orjson.JSONEncodeError):
+                orjson.dumps(val, option=orjson.OPT_ALLOW_BIGINT)
+
+    def test_int_128_loads_exceeds(self):
+        """
+        int exceeding 128-bit deserialization falls back to float
+        """
+        result = orjson.loads(
+            b"999999999999999999999999999999999999999999999999"
+        )
+        assert isinstance(result, float)
 
     def test_float(self):
         """

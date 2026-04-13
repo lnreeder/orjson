@@ -2,14 +2,16 @@
 // Copyright ijl (2024-2026)
 
 use crate::ffi::{
-    PyDateRef, PyDateTimeRef, PyFloatRef, PyStrRef, PyStrSubclassRef, PyTimeRef, PyUuidRef,
+    PyDateRef, PyDateTimeRef, PyFloatRef, PyIntRef, PyStrRef, PyStrSubclassRef, PyTimeRef,
+    PyUuidRef,
 };
 use crate::serialize::{
     datetime::{write_date, write_datetime, write_time},
     error::SerializeError,
     obtype::ObType,
     writer::{
-        SmallFixedBuffer, pyobject_to_obtype, write_float64, write_integer_i64, write_integer_u64,
+        SmallFixedBuffer, pyobject_to_obtype, write_float64, write_integer_i128, write_integer_i64,
+        write_integer_u128, write_integer_u64,
     },
 };
 use crate::typeref::{TRUE, VALUE_STR};
@@ -71,7 +73,10 @@ fn non_str_float(ob: PyFloatRef) -> Result<String, SerializeError> {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn non_str_int(key: *mut crate::ffi::PyObject) -> Result<String, SerializeError> {
+fn non_str_int(
+    key: *mut crate::ffi::PyObject,
+    opts: crate::opt::Opt,
+) -> Result<String, SerializeError> {
     let ival = unsafe { crate::ffi::PyLong_AsLongLong(key) };
     if ival == -1 && unsafe { !crate::ffi::PyErr_Occurred().is_null() } {
         cold_path!();
@@ -79,7 +84,26 @@ fn non_str_int(key: *mut crate::ffi::PyObject) -> Result<String, SerializeError>
         let uval = unsafe { crate::ffi::PyLong_AsUnsignedLongLong(key) };
         if uval == u64::MAX && unsafe { !crate::ffi::PyErr_Occurred().is_null() } {
             cold_path!();
-            return Err(SerializeError::DictIntegerKey64Bit);
+            unsafe { crate::ffi::PyErr_Clear() };
+            if !opt_enabled!(opts, crate::opt::ALLOW_BIGINT) {
+                return Err(SerializeError::DictIntegerKey64Bit);
+            }
+            let pyint = unsafe { PyIntRef::from_ptr_unchecked(key) };
+            return match unsafe { pyint.as_i128() } {
+                Ok(val) => {
+                    let mut buf = SmallFixedBuffer::new();
+                    write_integer_i128(&mut buf, val);
+                    Ok(buf.to_string())
+                }
+                Err(_) => match unsafe { pyint.as_u128() } {
+                    Ok(val) => {
+                        let mut buf = SmallFixedBuffer::new();
+                        write_integer_u128(&mut buf, val);
+                        Ok(buf.to_string())
+                    }
+                    Err(_) => Err(SerializeError::DictIntegerKey128Bit),
+                },
+            };
         }
         let mut buf = SmallFixedBuffer::new();
         write_integer_u64(&mut buf, uval);
@@ -107,7 +131,7 @@ pub(crate) fn pyobject_to_string(
                     Ok(String::from("false"))
                 }
             }
-            ObType::Int => non_str_int(key),
+            ObType::Int => non_str_int(key, opts),
             ObType::Float => non_str_float(PyFloatRef::from_ptr_unchecked(key)),
             ObType::Datetime => non_str_datetime(PyDateTimeRef::from_ptr_unchecked(key), opts),
             ObType::Date => non_str_date(PyDateRef::from_ptr_unchecked(key)),

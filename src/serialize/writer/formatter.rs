@@ -3,8 +3,8 @@
 // This is an adaptation of `src/value/ser.rs` from serde-json.
 
 use super::{
-    write_float32, write_float64, write_integer_i32, write_integer_i64, write_integer_u32,
-    write_integer_u64,
+    write_float32, write_float64, write_integer_i128, write_integer_i32, write_integer_i64,
+    write_integer_u128, write_integer_u32, write_integer_u64,
 };
 use crate::serialize::writer::WriteExt;
 use std::io;
@@ -73,6 +73,26 @@ pub(crate) trait Formatter {
     {
         writer.reserve_minimum();
         write_integer_u64(writer, value);
+        Ok(())
+    }
+
+    #[inline]
+    fn write_i128<W>(&mut self, writer: &mut W, value: i128) -> io::Result<()>
+    where
+        W: ?Sized + WriteExt + bytes::BufMut,
+    {
+        writer.reserve_minimum();
+        write_integer_i128(writer, value);
+        Ok(())
+    }
+
+    #[inline]
+    fn write_u128<W>(&mut self, writer: &mut W, value: u128) -> io::Result<()>
+    where
+        W: ?Sized + WriteExt + bytes::BufMut,
+    {
+        writer.reserve_minimum();
+        write_integer_u128(writer, value);
         Ok(())
     }
 
