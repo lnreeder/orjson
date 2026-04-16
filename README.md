@@ -54,7 +54,7 @@ available in the repository.
     3. [Migrating](https://github.com/ijl/orjson?tab=readme-ov-file#migrating)
     4. [Serialize](https://github.com/ijl/orjson?tab=readme-ov-file#serialize)
         1. [default](https://github.com/ijl/orjson?tab=readme-ov-file#default)
-        2. [option](https://github.com/ijl/orjson?tab=readme-ov-file#option)
+        2. [option](#option)
         3. [Fragment](https://github.com/ijl/orjson?tab=readme-ov-file#fragment)
     5. [Deserialize](https://github.com/ijl/orjson?tab=readme-ov-file#deserialize)
 2. [Types](https://github.com/ijl/orjson?tab=readme-ov-file#types)
@@ -62,7 +62,7 @@ available in the repository.
     2. [datetime](https://github.com/ijl/orjson?tab=readme-ov-file#datetime)
     3. [enum](https://github.com/ijl/orjson?tab=readme-ov-file#enum)
     4. [float](https://github.com/ijl/orjson?tab=readme-ov-file#float)
-    5. [int](https://github.com/ijl/orjson?tab=readme-ov-file#int)
+    5. [int](#int)
     6. [numpy](https://github.com/ijl/orjson?tab=readme-ov-file#numpy)
     7. [str](https://github.com/ijl/orjson?tab=readme-ov-file#str)
     8. [uuid](https://github.com/ijl/orjson?tab=readme-ov-file#uuid)
@@ -171,8 +171,8 @@ describes the invalid object with the error message
 
 It raises `JSONEncodeError` on a `str` that contains invalid UTF-8.
 
-It raises `JSONEncodeError` on an integer that exceeds 64 bits by default or,
-with `OPT_STRICT_INTEGER`, 53 bits.
+It raises `JSONEncodeError` on an integer that exceeds 64 bits by default,
+with `OPT_STRICT_INTEGER`, 53 bits, or with `OPT_ALLOW_BIGINT`, 128 bits
 
 It raises `JSONEncodeError` if a `dict` has a key of a type other than `str`,
 unless `OPT_NON_STR_KEYS` is specified.
@@ -240,6 +240,12 @@ b'{"set":null}'
 To modify how data is serialized, specify `option`. Each `option` is an integer
 constant in `orjson`. To specify multiple options, mask them together, e.g.,
 `option=orjson.OPT_STRICT_INTEGER | orjson.OPT_NAIVE_UTC`.
+
+##### OPT_ALLOW_BIGINT
+
+Enable 128 bit integers for serialization and deserialization. 64 bit integers are 
+preferred but if an error is encountered handling 64 bits, then 128 bit conversion 
+is attempted.  For more, see [int](#int).
 
 ##### OPT_APPEND_NEWLINE
 
@@ -547,7 +553,7 @@ This is the same sorting behavior as the standard library.
 
 ##### OPT_STRICT_INTEGER
 
-Enforce 53-bit limit on integers. The limit is otherwise 64 bits, the same as
+Enforce 53-bit limit on integers. The limit is otherwise 64 bits (or 128 bits if OPT_BIGINT is enabled), the same as
 the Python standard library. For more, see [int](https://github.com/ijl/orjson?tab=readme-ov-file#int).
 
 ##### OPT_UTC_Z
@@ -797,6 +803,10 @@ JSONEncodeError: Integer exceeds 53-bit range
 >>> orjson.dumps(-9007199254740992, option=orjson.OPT_STRICT_INTEGER)
 JSONEncodeError: Integer exceeds 53-bit range
 ```
+
+orjson can be configured to serialize and deserialize 128-bit integers with 
+OPT_ALLOW_BIGINT, in which case the range supported is a signed 128-bit minimum 
+(-2<sup>127</sup>) to an unsigned 128-bit maximum (2<sup>128</sup>-1)
 
 ### numpy
 

@@ -3,7 +3,7 @@
 
 #[allow(unused)]
 use super::{Py_TPFLAGS_LONG_SUBCLASS, PyType_GetFlags};
-use super::{PyLong_FromLongLong, PyLong_FromUnsignedLongLong, PyObject};
+use super::{PyLong_FromByteArray, PyLong_FromLongLong, PyLong_FromUnsignedLongLong, PyObject};
 use crate::opt::{MAX_OPT, Opt};
 
 // longintrepr.h, _longobject, _PyLongValue
@@ -44,6 +44,7 @@ pub(crate) enum PyIntError {
     #[cfg(not(feature = "inline_int"))]
     NotSigned,
     Exceeds64Bit,
+    Exceeds128Bit,
 }
 
 pub(crate) enum PyIntOptConversionError {
@@ -57,6 +58,8 @@ pub(crate) enum PyIntKind {
     I32,
     U64,
     I64,
+    U128,
+    I128,
 }
 
 #[derive(Clone)]
@@ -223,6 +226,97 @@ impl PyIntRef {
         }
     }
 
+    #[cfg(feature = "inline_int")]
+    #[inline]
+    fn get_128bit_value(&self) -> Result<[u8; 16], PyIntError> {
+        unsafe {
+            let mut buffer: [u8; 16] = [0; 16];
+            let ret = crate::ffi::PyLong_AsByteArray(
+                self.as_ptr().cast::<pyo3_ffi::PyLongObject>(),
+                buffer.as_mut_ptr().cast::<core::ffi::c_uchar>(),
+                16,
+                1,
+                i32::from(self.is_signed()),
+            );
+            if ret == -1 {
+                cold_path!();
+                #[cfg(not(Py_3_13))]
+                unsafe {
+                    crate::ffi::PyErr_Clear()
+                };
+                Err(PyIntError::Exceeds128Bit)
+            } else {
+                Ok(buffer)
+            }
+        }
+    }
+
+    #[cfg(feature = "inline_int")]
+    #[inline]
+    pub unsafe fn as_i128(&self) -> Result<i128, PyIntError> {
+        let val = self.get_128bit_value()?;
+        #[allow(unnecessary_transmutes)]
+        unsafe {
+            Ok(core::mem::transmute::<[u8; 16], i128>(val))
+        }
+    }
+
+    #[cfg(feature = "inline_int")]
+    #[inline]
+    pub unsafe fn as_u128(&self) -> Result<u128, PyIntError> {
+        let val = self.get_128bit_value()?;
+        #[allow(unnecessary_transmutes)]
+        unsafe {
+            Ok(core::mem::transmute::<[u8; 16], u128>(val))
+        }
+    }
+
+    #[cfg(not(feature = "inline_int"))]
+    #[inline]
+    pub unsafe fn as_i128(&self) -> Result<i128, PyIntError> {
+        unsafe {
+            let mut buffer: [u8; 16] = [0; 16];
+            let ret = crate::ffi::PyLong_AsByteArray(
+                self.as_ptr().cast::<pyo3_ffi::PyLongObject>(),
+                buffer.as_mut_ptr().cast::<core::ffi::c_uchar>(),
+                16,
+                1,
+                1,
+            );
+            if ret == -1 {
+                cold_path!();
+                crate::ffi::PyErr_Clear();
+                Err(PyIntError::Exceeds128Bit)
+            } else {
+                #[allow(unnecessary_transmutes)]
+                Ok(core::mem::transmute::<[u8; 16], i128>(buffer))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "inline_int"))]
+    #[inline]
+    pub unsafe fn as_u128(&self) -> Result<u128, PyIntError> {
+        unsafe {
+            let mut buffer: [u8; 16] = [0; 16];
+            let ret = crate::ffi::PyLong_AsByteArray(
+                self.as_ptr().cast::<pyo3_ffi::PyLongObject>(),
+                buffer.as_mut_ptr().cast::<core::ffi::c_uchar>(),
+                16,
+                1,
+                0,
+            );
+            if ret == -1 {
+                cold_path!();
+                crate::ffi::PyErr_Clear();
+                Err(PyIntError::Exceeds128Bit)
+            } else {
+                #[allow(unnecessary_transmutes)]
+                Ok(core::mem::transmute::<[u8; 16], u128>(buffer))
+            }
+        }
+    }
+
     #[cfg(not(feature = "inline_int"))]
     #[inline]
     pub unsafe fn as_i64(&self) -> Result<i64, PyIntError> {
@@ -294,6 +388,36 @@ impl PyIntRef {
     pub fn from_u64(value: u64) -> Self {
         unsafe {
             let ptr = PyLong_FromUnsignedLongLong(value);
+            debug_assert!(!ptr.is_null());
+            Self::from_ptr_unchecked(ptr)
+        }
+    }
+
+    #[inline]
+    pub fn from_i128(value: i128) -> Self {
+        unsafe {
+            let bytes = value.to_le_bytes();
+            let ptr = PyLong_FromByteArray(
+                bytes.as_ptr().cast::<core::ffi::c_uchar>(),
+                16,
+                1,
+                1,
+            );
+            debug_assert!(!ptr.is_null());
+            Self::from_ptr_unchecked(ptr)
+        }
+    }
+
+    #[inline]
+    pub fn from_u128(value: u128) -> Self {
+        unsafe {
+            let bytes = value.to_le_bytes();
+            let ptr = PyLong_FromByteArray(
+                bytes.as_ptr().cast::<core::ffi::c_uchar>(),
+                16,
+                1,
+                0,
+            );
             debug_assert!(!ptr.is_null());
             Self::from_ptr_unchecked(ptr)
         }

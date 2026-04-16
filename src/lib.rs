@@ -151,6 +151,7 @@ pub(crate) unsafe extern "C" fn orjson_init_exec(mptr: *mut PyObject) -> c_int {
 
         add!(mptr, c"Fragment", typeref::FRAGMENT_TYPE.cast::<PyObject>());
 
+        opt!(mptr, c"OPT_ALLOW_BIGINT", opt::ALLOW_BIGINT);
         opt!(mptr, c"OPT_APPEND_NEWLINE", opt::APPEND_NEWLINE);
         opt!(mptr, c"OPT_INDENT_2", opt::INDENT_2);
         opt!(mptr, c"OPT_NAIVE_UTC", opt::NAIVE_UTC);

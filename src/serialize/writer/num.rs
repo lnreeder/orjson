@@ -37,12 +37,40 @@ where
 }
 
 #[inline]
+pub(crate) fn write_integer_u128<B>(buf: &mut B, val: u128)
+where
+    B: ?Sized + WriteExt + BufMut,
+{
+    write_integer_wide(buf, val)
+}
+
+#[inline]
+pub(crate) fn write_integer_i128<B>(buf: &mut B, val: i128)
+where
+    B: ?Sized + WriteExt + BufMut,
+{
+    write_integer_wide(buf, val)
+}
+
+#[inline]
 fn write_integer<B, V: itoap::Integer>(buf: &mut B, val: V)
 where
     B: ?Sized + WriteExt + BufMut,
 {
     unsafe {
         debug_assert!(buf.remaining_mut() >= 20);
+        let len = itoap::write_to_ptr(buf.as_mut_buffer_ptr(), val);
+        buf.advance_mut(len);
+    }
+}
+
+#[inline]
+fn write_integer_wide<B, V: itoap::Integer>(buf: &mut B, val: V)
+where
+    B: ?Sized + WriteExt + BufMut,
+{
+    unsafe {
+        debug_assert!(buf.remaining_mut() >= 40);
         let len = itoap::write_to_ptr(buf.as_mut_buffer_ptr(), val);
         buf.advance_mut(len);
     }
